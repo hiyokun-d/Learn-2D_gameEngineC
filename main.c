@@ -8,6 +8,27 @@
 #define SCREEN_WIDTH 600
 #define SCREEN_HEIGHT 400
 
+// Game states
+typedef enum {
+    STATE_LOBBY,
+    STATE_PLAYING,
+    STATE_PAUSED,
+    STATE_GAME_OVER,
+    STATE_WIN
+} GameState;
+
+// Menu options
+typedef enum {
+    MENU_START,
+    MENU_EXIT,
+    MENU_TOTAL
+} MenuOption;
+
+// Game state variables
+GameState currentState = STATE_LOBBY;
+MenuOption selectedOption = MENU_START;
+int highScore = 0;
+
 float player_X = SCREEN_WIDTH / 2 - 20;
 float player_Y = SCREEN_HEIGHT - (20 * 3);
 const float playerSpeed = 9.7;
@@ -23,6 +44,7 @@ float ball_vy = ballSpeed;
 int totalBall = 35;
 int score = 0;
 
+bool game_start = false;
 bool automatic_paddle = false;
 
 typedef struct {
@@ -194,35 +216,145 @@ void breakBlock(struct Arc ball, BlockNode **head) {
   }
 }
 
-void renderWinMessage(SDL_Renderer *renderer, TTF_Font *font, char *condition) {
-  SDL_Color green = {0, 255, 0, 255};
-  SDL_Surface *textSurface = TTF_RenderText_Solid(font, condition, green);
-  SDL_Texture *textTexture =
-      SDL_CreateTextureFromSurface(renderer, textSurface);
+// Generic function to render text
+void renderText(SDL_Renderer *renderer, TTF_Font *font, const char *text, 
+                SDL_Color color, int x, int y) {
+  SDL_Surface *textSurface = TTF_RenderText_Solid(font, text, color);
+  if (!textSurface) {
+    printf("Failed to render text: %s\n", TTF_GetError());
+    return;
+  }
+  
+  SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+  if (!textTexture) {
+    printf("Failed to create texture: %s\n", SDL_GetError());
+    SDL_FreeSurface(textSurface);
+    return;
+  }
 
-  SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2,
-                       SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w,
-                       textSurface->h};
+  SDL_Rect textRect = {x, y, textSurface->w, textSurface->h};
   SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
 
   SDL_FreeSurface(textSurface);
   SDL_DestroyTexture(textTexture);
 }
 
+void renderWinMessage(SDL_Renderer *renderer, TTF_Font *font, char *condition) {
+  SDL_Color green = {0, 255, 0, 255};
+  renderText(renderer, font, condition, green, 
+             SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 15);
+}
+
 void renderScore(SDL_Renderer *renderer, TTF_Font *font, int score) {
   char scoreText[32];
   sprintf(scoreText, "Score: %d", score);
-
   SDL_Color white = {255, 255, 255, 255};
-  SDL_Surface *textSurface = TTF_RenderText_Solid(font, scoreText, white);
-  SDL_Texture *textTexture =
-      SDL_CreateTextureFromSurface(renderer, textSurface);
+  renderText(renderer, font, scoreText, white, 10, SCREEN_HEIGHT - 25);
+}
 
-  SDL_Rect textRect = {10, SCREEN_HEIGHT - 25, textSurface->w, textSurface->h};
-  SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+// Render high score
+void renderHighScore(SDL_Renderer *renderer, TTF_Font *font, int highScore) {
+  if (highScore <= 0) return;
+  
+  char highScoreText[32];
+  sprintf(highScoreText, "High Score: %d", highScore);
+  SDL_Color gold = {255, 215, 0, 255}; // Gold color
+  renderText(renderer, font, highScoreText, gold, SCREEN_WIDTH - 150, SCREEN_HEIGHT - 25);
+}
 
-  SDL_FreeSurface(textSurface);
-  SDL_DestroyTexture(textTexture);
+// Render the lobby screen
+void renderLobby(SDL_Renderer *renderer, TTF_Font *font) {
+  // Set background color (dark blue)
+  SDL_SetRenderDrawColor(renderer, 0, 0, 80, 255);
+  SDL_RenderClear(renderer);
+  
+  // Title
+  SDL_Color titleColor = {255, 255, 0, 255}; // Yellow
+  renderText(renderer, font, "BREAKOUT", titleColor, SCREEN_WIDTH/2 - 70, 80);
+  
+  // Menu options
+  SDL_Color selected = {255, 255, 255, 255}; // White
+  SDL_Color unselected = {150, 150, 150, 255}; // Gray
+  
+  // Start Game option
+  renderText(renderer, font, "Start Game", 
+             (selectedOption == MENU_START) ? selected : unselected,
+             SCREEN_WIDTH/2 - 70, 180);
+  
+  // Quit option
+  renderText(renderer, font, "Quit", 
+             (selectedOption == MENU_EXIT) ? selected : unselected,
+             SCREEN_WIDTH/2 - 30, 220);
+  
+  // Instructions
+  SDL_Color instructionColor = {200, 200, 200, 255}; // Light gray
+  renderText(renderer, font, "Up/Down: Select, Enter: Confirm", 
+             instructionColor, SCREEN_WIDTH/2 - 150, SCREEN_HEIGHT - 60);
+  
+  // Display high score if exists
+  renderHighScore(renderer, font, highScore);
+}
+
+// Render game over screen
+void renderGameOverScreen(SDL_Renderer *renderer, TTF_Font *font, bool isWin) {
+  // Set background color (dark red for loss, dark green for win)
+  if (isWin) {
+    SDL_SetRenderDrawColor(renderer, 0, 50, 0, 255); // Dark green
+  } else {
+    SDL_SetRenderDrawColor(renderer, 50, 0, 0, 255); // Dark red
+  }
+  SDL_RenderClear(renderer);
+  
+  // Game result message
+  SDL_Color messageColor = isWin ? 
+                          (SDL_Color){0, 255, 0, 255} :  // Bright green
+                          (SDL_Color){255, 0, 0, 255};   // Bright red
+  
+  const char* message = isWin ? "YOU WIN!" : "GAME OVER";
+  renderText(renderer, font, message, messageColor, 
+            SCREEN_WIDTH / 2 - 70, SCREEN_HEIGHT / 2 - 40);
+  
+  // Score display
+  char scoreText[32];
+  sprintf(scoreText, "Your Score: %d", score);
+  SDL_Color white = {255, 255, 255, 255};
+  renderText(renderer, font, scoreText, white, SCREEN_WIDTH/2 - 80, SCREEN_HEIGHT/2);
+  
+  // New high score notification
+  if (score > highScore) {
+    highScore = score;
+    SDL_Color gold = {255, 215, 0, 255}; // Gold
+    renderText(renderer, font, "NEW HIGH SCORE!", gold, 
+              SCREEN_WIDTH/2 - 110, SCREEN_HEIGHT/2 + 30);
+  }
+  
+  // Instructions
+  SDL_Color instructionColor = {200, 200, 200, 255}; // Light gray
+  renderText(renderer, font, "Press R to restart or ESC for menu", 
+            instructionColor, SCREEN_WIDTH/2 - 160, SCREEN_HEIGHT - 60);
+}
+
+// Reset game to initial state
+void resetGame() {
+  // Reset player
+  player_X = SCREEN_WIDTH / 2 - 20;
+  player_Y = SCREEN_HEIGHT - (20 * 3);
+  player_vx = 0;
+  player_vy = 0;
+  
+  // Reset ball
+  ball_x = SCREEN_WIDTH / 2 - 10;
+  ball_y = SCREEN_HEIGHT / 2 - 10;
+  ball_vx = ballSpeed;
+  ball_vy = ballSpeed;
+  
+  // Reset game variables
+  score = 0;
+  totalBall = 35;
+  game_start = true;
+  
+  // Switch to playing state
+  currentState = STATE_PLAYING;
 }
 
 int main() {
@@ -267,147 +399,214 @@ int main() {
   bool isRunning = true;
   SDL_Event event;
 
-  Rectangle block[40];
-  int size = sizeof(block) / sizeof(block[0]);
-  makingBlock(block, size);
+  // Block list starts as NULL until game begins
+  BlockNode *blockList = NULL;
 
-  BlockNode *blockList = createBlockList(totalBall);
+  // Start in lobby state
+  currentState = STATE_LOBBY;
 
   while (isRunning) {
+    // Common game objects
     Rectangle playerBlock = {player_X, player_Y, 90, 20, {23, 231, 255, 255}};
     struct Arc ball = {ball_x, ball_y, 10, 0, M_PI * 2, {255, 0, 0, 255}};
 
-    // Event handling
+    // Event handling - common for all states
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
         isRunning = false;
       }
 
-      switch (event.type) {
-      case SDL_KEYDOWN:
-        if (event.key.keysym.sym == SDLK_a) {
-          player_vx = -playerSpeed;
-        } else if (event.key.keysym.sym == SDLK_d) {
-          player_vx = playerSpeed;
+      // Handle key presses based on current state
+      if (event.type == SDL_KEYDOWN) {
+        // Global keys for any state
+        if (event.key.keysym.sym == SDLK_ESCAPE) {
+          // ESC key returns to lobby from any state except lobby itself
+          if (currentState != STATE_LOBBY) {
+            // Free block list when returning to lobby
+            BlockNode *current = blockList;
+            while (current != NULL) {
+              BlockNode *next = current->next;
+              free(current);
+              current = next;
+            }
+            blockList = NULL;
+            currentState = STATE_LOBBY;
+          }
         }
 
-        if (event.key.keysym.sym == SDLK_f && !event.key.repeat) {
-          if (!automatic_paddle) {
-            automatic_paddle = true;
-          } else
-            automatic_paddle = false;
+        // State-specific key handling
+        switch (currentState) {
+          case STATE_LOBBY:
+            // Lobby navigation
+            if (event.key.keysym.sym == SDLK_UP) {
+              selectedOption = (selectedOption == MENU_START) ? MENU_EXIT : MENU_START;
+            } else if (event.key.keysym.sym == SDLK_DOWN) {
+              selectedOption = (selectedOption == MENU_EXIT) ? MENU_START : MENU_EXIT;
+            } else if (event.key.keysym.sym == SDLK_RETURN || 
+                      event.key.keysym.sym == SDLK_SPACE) {
+              if (selectedOption == MENU_START) {
+                // Start new game
+                resetGame();
+                blockList = createBlockList(totalBall);
+              } else if (selectedOption == MENU_EXIT) {
+                isRunning = false;
+              }
+            }
+            break;
+
+          case STATE_PLAYING:
+            // Game controls
+            if (event.key.keysym.sym == SDLK_a) {
+              player_vx = -playerSpeed;
+            } else if (event.key.keysym.sym == SDLK_d) {
+              player_vx = playerSpeed;
+            } else if (event.key.keysym.sym == SDLK_f && !event.key.repeat) {
+              automatic_paddle = !automatic_paddle;
+            }
+            break;
+
+          case STATE_GAME_OVER:
+          case STATE_WIN:
+            // Game over/win controls
+            if (event.key.keysym.sym == SDLK_r) {
+              // Restart game
+              resetGame();
+              
+              // Free old block list
+              BlockNode *current = blockList;
+              while (current != NULL) {
+                BlockNode *next = current->next;
+                free(current);
+                current = next;
+              }
+              
+              // Create new block list
+              blockList = createBlockList(totalBall);
+            }
+            break;
+
+          default:
+            break;
         }
-
-        break;
-
-      case SDL_KEYUP:
-        if (event.key.keysym.sym == SDLK_a || event.key.keysym.sym == SDLK_d) {
-          player_vx = 0;
+      } else if (event.type == SDL_KEYUP) {
+        // Handle key releases for gameplay
+        if (currentState == STATE_PLAYING) {
+          if (event.key.keysym.sym == SDLK_a || event.key.keysym.sym == SDLK_d) {
+            player_vx = 0;
+          }
         }
-
-        // if (event.key.keysym.sym == SDLK_w || event.key.keysym.sym ==
-        // SDLK_s)
-        // {
-        //   player_vy = 0;
-        // }
-
-        break;
       }
     }
 
-    ball_x += ball_vx;
-    ball_y += ball_vy;
-    if (checkCollision(ball, playerBlock)) {
-      ball_vy = -ballSpeed;
+    // State-specific updates and rendering
+    switch (currentState) {
+      case STATE_LOBBY:
+        // Render lobby screen
+        renderLobby(renderer, font);
+        break;
+
+      case STATE_PLAYING:
+        // Update game state
+        ball_x += ball_vx;
+        ball_y += ball_vy;
+        
+        // Ball-paddle collision
+        if (checkCollision(ball, playerBlock)) {
+          ball_vy = -ballSpeed;
+        }
+        
+        // Ball-wall collisions
+        if (ball_x < 0) {
+          ball_vx = ballSpeed;
+        }
+        if (ball_x > SCREEN_WIDTH - ball.r) {
+          ball_vx = -ballSpeed;
+        }
+        if (ball_y < 0 + ball.r) {
+          ball_vy = ballSpeed;
+        }
+        
+        // Update player position
+        player_X += player_vx;
+        
+        // Auto-paddle feature
+        if (automatic_paddle) {
+          player_X = ball_x - playerBlock.w/2; // Center paddle under ball
+        }
+        
+        // Keep player within boundaries
+        if (player_X < 0) {
+          player_X = 0;
+        }
+        if (player_X > SCREEN_WIDTH - playerBlock.w) {
+          player_X = SCREEN_WIDTH - playerBlock.w;
+        }
+        if (player_Y < 0) {
+          player_Y = 0;
+        }
+        if (player_Y > SCREEN_HEIGHT - playerBlock.h) {
+          player_Y = SCREEN_HEIGHT - playerBlock.h;
+        }
+        
+        // Check for ball-block collisions
+        breakBlock(ball, &blockList);
+        
+        // Check for win condition
+        if (totalBall <= 0) {
+          currentState = STATE_WIN;
+        }
+        
+        // Check for lose condition (ball below screen)
+        if (ball_y > SCREEN_HEIGHT) {
+          currentState = STATE_GAME_OVER;
+        }
+        
+        // Render game elements
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        drawRectangle(renderer, playerBlock);
+        drawArc(renderer, ball);
+        drawBlocks(renderer, blockList);
+        renderScore(renderer, font, score);
+        renderHighScore(renderer, font, highScore);
+        break;
+
+      case STATE_GAME_OVER:
+        // Render game over screen
+        renderGameOverScreen(renderer, font, false);
+        break;
+
+      case STATE_WIN:
+        // Render win screen
+        renderGameOverScreen(renderer, font, true);
+        break;
+
+      default:
+        break;
     }
 
-    if (ball_x < 0) {
-      ball_vx = ballSpeed;
-    }
-
-    if (ball_x > SCREEN_WIDTH - ball.r) {
-      ball_vx = -ballSpeed;
-    }
-
-    // BOTTOM OF THE SCREEN OR SOMETHING, REMINDER: don't get fucked up AND
-    // CHANGE ANYTHING IN THIS CODE YOU STUPID ASS
-
-    player_X += player_vx;
-    player_Y += player_vy;
-
-    if (automatic_paddle) {
-      player_X += ball_vx;
-    }
-
-    if (player_X < 0) {
-      player_X = 0;
-    }
-    if (player_X > SCREEN_WIDTH - playerBlock.w) {
-      player_X = SCREEN_WIDTH - playerBlock.w; // Right boundary
-    }
-    if (player_Y < 0) {
-      player_Y = 0; // Top boundary
-    }
-    if (player_Y > SCREEN_HEIGHT - playerBlock.h) {
-      player_Y = SCREEN_HEIGHT - playerBlock.h; // Bottom boundary
-    }
-
-    // Horizontal Collision
-    // if (!(playerBlock.x > testBlock.x + testBlock.w ||
-    //       playerBlock.x + playerBlock.w < testBlock.x ||
-    //       playerBlock.y > testBlock.y + testBlock.h ||
-    //       playerBlock.y + playerBlock.h < testBlock.y)) {
-    // }
-
-    // Clear the screen with black
-    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF);
-    SDL_RenderClear(renderer);
-    drawRectangle(renderer, playerBlock);
-
-    bool playerWon = (totalBall == 0);
-
-    renderScore(renderer, font, score);
-
-    if (ball_y < 0 + ball.r) {
-      ball_vy = ballSpeed;
-    }
-
-    if (!playerWon && ball_y > SCREEN_HEIGHT) {
-      renderWinMessage(renderer, font, "YOU LOSE!");
-      if (playerWon) {
-        renderWinMessage(renderer, font, "YOU WIN!");
-      }
-
-      breakBlock(ball, &blockList);
-
-      drawArc(renderer, ball);
-      // for (int i = 0; i < size; i++) {
-      //   drawRectangle(renderer, block[i]);
-      // }
-      //
-      drawBlocks(renderer, blockList);
-
-      renderScore(renderer, font, score);
-      SDL_RenderPresent(renderer);
-      SDL_Delay(1000 / 60);
-    }
-
-    // Cleanup
-    // Free the block list
-    BlockNode *current = blockList;
-    while (current != NULL) {
-      BlockNode *next = current->next;
-      free(current);
-      current = next;
-    }
-
-    TTF_CloseFont(font);
-    TTF_Quit();
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    printf("Goodbye World!\n");
-
-    return 0;
+    // Present rendered frame
+    SDL_RenderPresent(renderer);
+    
+    // Cap frame rate
+    SDL_Delay(1000 / 60);
   }
+
+  // Cleanup - outside the game loop
+  // Free the block list
+  BlockNode *current = blockList;
+  while (current != NULL) {
+    BlockNode *next = current->next;
+    free(current);
+    current = next;
+  }
+
+  TTF_CloseFont(font);
+  TTF_Quit();
+  SDL_DestroyRenderer(renderer);
+  SDL_DestroyWindow(window);
+  SDL_Quit();
+  printf("Goodbye World!\n");
+
+  return 0;
+}
