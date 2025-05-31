@@ -373,41 +373,43 @@ int main() {
     }
 
     if (!playerWon && ball_y > SCREEN_HEIGHT) {
-      renderWinMessage(renderer, font, "YOU LOSE!");
-      if (playerWon) {
-        renderWinMessage(renderer, font, "YOU WIN!");
-      }
-
-      breakBlock(ball, &blockList);
-
-      drawArc(renderer, ball);
-      // for (int i = 0; i < size; i++) {
-      //   drawRectangle(renderer, block[i]);
-      // }
-      //
-      drawBlocks(renderer, blockList);
-
-      renderScore(renderer, font, score);
-      SDL_RenderPresent(renderer);
-      SDL_Delay(1000 / 60);
+      renderWinMessage(renderer, font, "lose");
     }
 
-    // Cleanup
-    // Free the block list
-    BlockNode *current = blockList;
-    while (current != NULL) {
-      BlockNode *next = current->next;
-      free(current);
-      current = next;
+    if (playerWon) {
+      renderWinMessage(renderer, font, "win");
     }
 
-    TTF_CloseFont(font);
-    TTF_Quit();
+    breakBlock(ball, &blockList);
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    printf("Goodbye World!\n");
+    drawArc(renderer, ball);
+    // for (int i = 0; i < size; i++) {
+    //   drawRectangle(renderer, block[i]);
+    // }
+    //
+    drawBlocks(renderer, blockList);
 
-    return 0;
+    renderScore(renderer, font, score);
+    SDL_RenderPresent(renderer);
+    SDL_Delay(1000 / 60);
   }
+
+  // Cleanup
+  // Free the block list
+  BlockNode *current = blockList;
+  while (current != NULL) {
+    BlockNode *next = current->next;
+    free(current);
+    current = next;
+  }
+
+  TTF_CloseFont(font);
+  TTF_Quit();
+
+  SDL_DestroyRenderer(renderer);
+  SDL_DestroyWindow(window);
+  SDL_Quit();
+  printf("Goodbye World!\n");
+
+  return 0;
+}
