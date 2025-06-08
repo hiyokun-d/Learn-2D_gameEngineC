@@ -27,3 +27,5 @@ SDL2, SDL2_ttf, SDL2_mixer if you have those libraries installed and you have th
 ```bash
 gcc main.c -o main $(sdl2-config --cflags --libs) -lSDL2_ttf -lSDL2_mixer && ./main
 ```
+
+# this game made by hiyo with ♥️
